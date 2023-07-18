@@ -1,12 +1,12 @@
 /*
-* P1virtualWire
+* virual P1 Cable
 * copyright 2023 by Willem Aandewiel
 * 
 * Library: TMRh20/RF24, https://github.com/tmrh20/RF24/
 * --> by Dejan Nedelkovski, www.HowToMechatronics.com
 */
 /*------------------------------------------------------
-*  Chip: "AVR128DB32"
+*  Chip: "AVR128DB32" / "AVR128DB28"
 *  Clock Speed: "24 MHz internal"
 *  millis()/micros() timer: |TCB2 (recommended)"
 *  Reset pin function: "Hardware Reset (recommended)"
@@ -35,33 +35,29 @@
  * SWITCH3        -                 PIN_PD5
  * SWITCH4        -                 PIN_PD6
 */
-#define _AVR128DB28
-#ifdef _AVR128DB28
-  #define PIN_CE      PIN_PD1
-  #define PIN_CSN     PIN_PD2
-  #define PIN_LED     PIN_PA7
-  #define BAUD_SET    PIN_PC3
-  #define PIN_MODE    PIN_PF0
-  #define SWITCH1     PIN_PD3
-  #define SWITCH2     PIN_PD4
-  #define SWITCH3     PIN_PD5
-  #define SWITCH4     PIN_PD6
-#else
+#if defined( IS_AVR128DB32 )
   #define PIN_CE      PIN_PF1
   #define PIN_CSN     PIN_PF2
-  #define PIN_LED     PIN_PA7
-  #define BAUD_SET    -1
-  #define PIN_MODE    PIN_PF0
-  #define SWITCH1     -1
-  #define SWITCH2     -1
-  #define SWITCH3     -1
-  #define SWITCH4     -1
+#elif defined( IS_AVR128DB28 )
+  #define PIN_CE      PIN_PD1
+  #define PIN_CSN     PIN_PD2
+#else
+  #error No Processor selected!
 #endif
+#define PIN_LED     PIN_PA7
+#define BAUD_SET    PIN_PC3
+#define PIN_MODE    PIN_PF0
+#define SWITCH1     PIN_PD3
+#define SWITCH2     PIN_PD4
+#define SWITCH3     PIN_PD5
+#define SWITCH4     PIN_PD6
+
+#define SET_BIT(x, pos) (x |= (1U << pos))
+#define CLR_BIT(x, pos) (x &= (~(1U<< pos)))
 
 #include <SPI.h>
 #include <nRF24L01.h>
 #include <RF24.h>
-//#include "CRC16.h"
 
 // "/KFM5KAIFA-METER\r\n\r\n1-0:1.8.1(000671.578*kWh)\r\n1-0:1.7.0(00.318*kW)\r\n!1E1D\r\n\r\n";
 char minTelegram[] =
@@ -82,18 +78,19 @@ char minTelegram[] =
 
 RF24 radio(PIN_CE, PIN_CSN); // CE, CSN
 
-const byte address[6] = "00001";
+const byte pipeName[6] = "vrtP1";
 
 bool      isReceiver;
+byte      channelNr = 0x61;
+int       powerMode = RF24_PA_MIN;
 char      p1Buffer[_MAX_P1BUFFER+15];  // room for "!1234\0\r\n\r\n"
 int16_t   p1BuffLen;
 int16_t   p1BuffPos = 0;
 bool      startTelegram;
 int16_t   startTelegramPos;
-int16_t   avrgTelegramlen = 50;
+int16_t   avrgTelegramlen = 500;
 char      payloadBuff[_PAYLOAD_SIZE+10];
 uint32_t  startTime, waitTimer, rebootTimer;
-int32_t   duration=0;
 uint32_t  errCount;
 char      orgCRC[10];
 int16_t   orgCRClen;
@@ -101,7 +98,7 @@ int16_t   orgCRClen;
 //--------------------------------------------------------------
 void resetViaSWR() 
 {
-  Serial.println("Software reset ...");
+  Serial.println("\r\nSoftware reset ...\r\n");
   Serial.flush();
   delay(500);
   _PROTECTED_WRITE(RSTCTRL.SWRR,1);
@@ -127,19 +124,41 @@ bool readSwitches()
   //---- read switch1 .. switch4 and baud_set
   //---- en doe daar wat mee
   isReceiver = digitalRead(PIN_MODE);
-  /*
-  x[0] = digitalRead(BAUD_SET);
-  x[1] = digitalRead(SWITCH1);
-  x[2] = digitalRead(SWITCH2);
-  x[3] = digitalRead(SWITCH3);
-  x[4] = digitalRead(SWITCH4);
-  */
+  Serial.println("Read the Switches ...");
+
+  if (digitalRead(SWITCH1))
+  {
+    powerMode = RF24_PA_MAX;
+    Serial.println("RF24 Power set to MAX");
+  }
+  else  
+  {
+    powerMode = RF24_PA_LOW;
+    Serial.println("RF24 Power set to LOW");
+  }
+  //x[0] = digitalRead(BAUD_SET);
+  CLR_BIT(channelNr,0);
+  CLR_BIT(channelNr,1);
+  if (digitalRead(SWITCH2))
+        SET_BIT(channelNr,2);
+  else  CLR_BIT(channelNr,2);
+  CLR_BIT(channelNr,3);
+  if (digitalRead(SWITCH3))
+        SET_BIT(channelNr,4);
+  else  CLR_BIT(channelNr,4);
+  CLR_BIT(channelNr,5);
+  if (digitalRead(SWITCH4))
+        SET_BIT(channelNr,6);
+  else  CLR_BIT(channelNr,6);
+  CLR_BIT(channelNr,7);
 
 } //  readSwitches()
+
+
 //--------------------------------------------------------------
 void transmitTelegram(char *telegram, int telegramLen) 
 {
-  bool ok = false;
+  bool transmitOk = false;
 
   errCount         = 0;
   startTelegramPos = 0;
@@ -155,13 +174,13 @@ void transmitTelegram(char *telegram, int telegramLen)
     {
       payloadBuff[i] = telegram[i+startTelegramPos];
     }
-    //Serial.println(payloadBuff);
+    Serial.print(payloadBuff);
     //---- ending "0" activates autoACK & Retry
     errCount = 0;
     do
     {
-      ok = radio.write(&payloadBuff, _PAYLOAD_SIZE, 0);
-      if (!ok) { delay(10); errCount++; }
+      transmitOk = radio.write(&payloadBuff, _PAYLOAD_SIZE, 0);
+      if (!transmitOk) { delay(10); errCount++; }
       else 
       { 
         if (startTelegramPos==0) 
@@ -170,8 +189,8 @@ void transmitTelegram(char *telegram, int telegramLen)
         { delay(5); }
       }
     }
-    while (!ok && (errCount < _MAX_TRANSMIT_ERRORS));
-    if (!ok) 
+    while (!transmitOk && (errCount < _MAX_TRANSMIT_ERRORS));
+    if (!transmitOk) 
     {
       Serial.println("Max Transmit errors.. Bail out!");
       for(int i=0; i<15; i++)
@@ -186,17 +205,21 @@ void transmitTelegram(char *telegram, int telegramLen)
     delay(10);
   }
 
+  //-- send End Of Telegram token
   memset(payloadBuff, 0, _PAYLOAD_SIZE);
+  memcpy(&payloadBuff[0], "*EOT*\r\n", 7);
+
   //---- ending "0" activates autoACK & Retry
   errCount = 0;
   do
   {
-    ok = radio.write(&payloadBuff, _PAYLOAD_SIZE, 0);
-    if (!ok) { delay(10); errCount++; }
-    else     { delay(5); }
+    transmitOk = radio.write(&payloadBuff, _PAYLOAD_SIZE, 0);
+    Serial.print(payloadBuff);
+    if (!transmitOk)  { delay(10); errCount++; }
+    else              { delay(5); }
   }
-  while (!ok && (errCount < _MAX_TRANSMIT_ERRORS));
-  Serial.println("Telegram transmitted!");
+  while (!transmitOk && (errCount < _MAX_TRANSMIT_ERRORS));
+  Serial.printf("Telegram transmitted in %d milliseconds!\r\n", (millis()-startTime));
 
 } //  transmitTelegram()
 
@@ -204,12 +227,12 @@ void transmitTelegram(char *telegram, int telegramLen)
 //--------------------------------------------------------------
 void setupReceiver()
 {
-  Serial.println("I'm a RECEIVER...\r\n");
+  Serial.printf("I'm a RECEIVER for pipe [%s]...\r\n\n", pipeName);
 
-  radio.openReadingPipe(0, address);
+  radio.openReadingPipe(0, pipeName);
   radio.startListening();
 
-  rebootTimer = millis();
+  rebootTimer = millis() + _REBOOT_TIME;
 
 } //  setupReceiver
 
@@ -218,88 +241,70 @@ void setupReceiver()
 void loopReceiver()
 {
   bool foundSlash   = false;
-  bool foundExcl    = false;
-  bool readOneMore  = false;
+  bool foundEOT     = false;
 
   if (radio.available()) 
   {
     memset(payloadBuff, 0, _PAYLOAD_SIZE+10);
 
-    uint8_t noBytes = radio.getDynamicPayloadSize();
-    radio.read(&payloadBuff, noBytes);
+    uint8_t bytesRead = radio.getDynamicPayloadSize();
+    radio.read(&payloadBuff, bytesRead);
 
     foundSlash = false;
     int posSlash = findChar(payloadBuff, '/');
     if (posSlash >= 0)
     {
-      //Serial.printf("\r\nFound [%c] in [%s] at pos[%d]\r\n", '/', payloadBuff, posSlash);
       foundSlash  = true;
       digitalWrite(PIN_LED, HIGH); 
       memset(p1Buffer, 0, _MAX_P1BUFFER+10);
       p1BuffPos = 0;
-      memcpy(&p1Buffer[p1BuffPos], payloadBuff, noBytes);
-      p1BuffPos += noBytes;
+      memcpy(&p1Buffer[p1BuffPos], payloadBuff, bytesRead);
+      p1BuffPos += bytesRead;
       startTelegramPos = 0;
       startTime = millis();
-      duration = -1;
     }
     
     if (!foundSlash) return;
 
-    readOneMore = false;
-    do
+    foundEOT = false;
+    while(!foundEOT && (p1BuffPos < (_MAX_P1BUFFER -15)) && (millis() < rebootTimer) )
     {
       memset(payloadBuff, 0, _PAYLOAD_SIZE+10);
       if (radio.available())
       {
-       if (readOneMore) readOneMore = false;
-
-        uint8_t noBytes = radio.getDynamicPayloadSize();
-        radio.read(&payloadBuff, noBytes);
-        memcpy(&p1Buffer[p1BuffPos], payloadBuff, noBytes);
-        p1BuffPos += noBytes;
-        foundExcl = false;
-        int posExcl = findChar(payloadBuff, '!');
-        if (posExcl >= 0)
-        { 
-          foundExcl = true;
-          //Serial.printf("\r\nFound [%c] in [%s] at pos[%d]\r\n", '!', payloadBuff, posExcl);
+        uint8_t bytesRead = radio.getDynamicPayloadSize();
+        radio.read(&payloadBuff, bytesRead);
+        //-- did we receive a EOT-token?
+        if (    payloadBuff[0] == '*'
+              && payloadBuff[1] == 'E'
+               && payloadBuff[2] == 'O'
+                && payloadBuff[3] == 'T'
+                 && payloadBuff[4] == '*'
+            ) 
+        {
+          Serial.println("\r\nfound EOT token!");
+          foundEOT = true;
           digitalWrite(PIN_LED, LOW); 
-          duration = millis() - startTime;
-          if (posExcl > (noBytes -8)) readOneMore = true;
+        }
+        else
+        {
+          memcpy(&p1Buffer[p1BuffPos], payloadBuff, bytesRead);
+          p1BuffPos += bytesRead;
         }
       }
-    }
-    while (!foundExcl && !readOneMore);    
-  
-    startTelegram = false;
-    startTelegramPos = -1;
-    p1BuffLen = strlen(p1Buffer);
-    Serial.printf("Find last [/] in [%d]bytes ...\r\n", p1BuffLen);
-    for(int i=p1BuffLen; (i>=0 && !startTelegram); i--)
-    {
-      if (p1Buffer[i] == '/')
-      {
-        startTelegram = true;
-        startTelegramPos = i;
-        Serial.printf("\r\nnStart telegram [/] found at byte[%d] ...\r\n\n", startTelegramPos);
-        break;
-      }
-    }
-    if (!startTelegram)
-    {
-      Serial.println("Not a valid start [/] found.. Bailout\r\n");
-      return;
     }
 
     Serial.println();
     Serial.printf("+++++telegram is [%d]bytes++++++++++++++++++++\r\n", strlen(p1Buffer)-startTelegramPos);
     Serial.print(&p1Buffer[startTelegramPos]);
-    //Serial.println("###############################################");
     Serial1.print(&p1Buffer[startTelegramPos]);
+    //-- reset rebootTimer --
+    rebootTimer = millis() + _REBOOT_TIME;
+    Serial.printf("Telegram received in %d milliseconds!\r\n", (millis() - startTime));
   }
 
-  if ((millis() - rebootTimer) > _REBOOT_TIME) { resetViaSWR(); }
+  if ( millis() >  rebootTimer)  { resetViaSWR(); }
+
 
 } //  loopReceiver
 
@@ -309,10 +314,10 @@ void setupTransmitter()
 {
   memset(p1Buffer, 0, sizeof(p1Buffer));
 
-  Serial.println("I'm a TRANSMITTER...\r\n");
+  Serial.printf("I'm a TRANSMITTER for pipe [%s]...\r\n\n", pipeName);
   Serial1.setTimeout(10);
 
-  radio.openWritingPipe(address);
+  radio.openWritingPipe(pipeName);
   radio.stopListening();
 
 } //  setupTransmitter
@@ -321,8 +326,7 @@ void setupTransmitter()
 //--------------------------------------------------------------
 void loopTransmitter()
 {
-  bool ok = false;
-  bool edited = false;
+  bool transmitOk = false;
 
   if (!Serial1.available()) { return; }
 
@@ -333,9 +337,19 @@ void loopTransmitter()
   Serial1.setTimeout(_MAX_TIMEOUT);
   waitTimer = millis();
   //-- read until "!" ("!" is not in p1Buffer!!!) --
-  int len = Serial1.readBytesUntil('!', p1Buffer, (_MAX_P1BUFFER -10));
+  int len = Serial1.readBytesUntil('!', p1Buffer, (_MAX_P1BUFFER -15));
   Serial.printf("\r\nread [%d]bytes\r\n", len);
-  //Serial.println("\r\n===\r\n");
+
+  if (len > (_MAX_P1BUFFER - 20))
+  {
+    Serial.println("Something went wrong .. (no '!' found in input)");
+    Serial.println(p1Buffer);
+    Serial.println("\r\n==========");
+    Serial.println(".. Bailout! \r\n");
+    Serial.flush();
+    return;
+  }
+
   //-- if timer has expired ..
   if ((millis() - waitTimer) >= _MAX_TIMEOUT)  
   {
@@ -348,19 +362,12 @@ void loopTransmitter()
   //                                                                    v
   // "/KFM5KAIFA-METER\r\n\r\n1-0:1.8.1(0006 . . . 0:1.7.0(00.318*kW)\r\n!1E1D\r\n\r\n";
   //
-  if (len < avrgTelegramlen) 
-  {
-    Serial.printf("Telegram too short [%d]bytes; must be at least [%d]bytes... Bailout\r\n", len, avrgTelegramlen);
-    if (avrgTelegramlen > 60) avrgTelegramlen -= 10;
-    return;
-  }
   //-- track back to first non-control char
   for (int p=0; p>-10; p--)
   {
     //-- test if not a control char
     if ((p1Buffer[len-p] >= ' ') && (p1Buffer[len-p] <= '~'))
     {
-      //Serial.printf("\r\n[%d] found [%c]\r\n\n", (len-p), p1Buffer[len-p]);
       len-=p;
       break;
     }
@@ -371,18 +378,7 @@ void loopTransmitter()
   //                                                                v
   // "/KFM5KAIFA-METER\r\n\r\n1-0:1.8.1(0006 . . . 0:1.7.0(00.318*kW)\r\n!1E1D\r\n\r\n";
   //
-  int posExcl = len;
   p1Buffer[len++] = '!';
-  p1Buffer[len++] = '0';
-  p1Buffer[len++] = '0';
-  p1Buffer[len++] = '0';
-  p1Buffer[len++] = '0';
-  p1Buffer[len++] = '\r';
-  p1Buffer[len++] = '\n';
-  p1Buffer[len++] = '\r';
-  p1Buffer[len++] = '\n';
-  p1Buffer[len++] = '\0';
-  p1Buffer[len]   = '\0';
 
   int orgCRCpos = 0;
   memset(orgCRC, 0, sizeof(orgCRC));
@@ -391,16 +387,26 @@ void loopTransmitter()
   int orgCRCLen = Serial1.readBytesUntil('\r', orgCRC, sizeof(orgCRC));
   for(int i=0; i<strlen(orgCRC); i++)
   {
-    //Serial.printf("Test orgCRC[%d] (%c)\r\n", i, orgCRC[i]);
     if ((orgCRC[i] >= ' ') && (orgCRC[i] <= '~'))
     {
-      posExcl++;
-      //Serial.printf("p1Buffer[%d] = [%c] ==> ", posExcl, p1Buffer[posExcl]);
-      p1Buffer[posExcl] = orgCRC[i];
-      //Serial.printf("Changed to [%c] \r\n", p1Buffer[posExcl]);
+      p1Buffer[len++] = orgCRC[i];
     }
   }
-  
+  p1Buffer[len++] = '\r';
+  p1Buffer[len++] = '\n';
+  p1Buffer[len++] = '\r';
+  p1Buffer[len++] = '\n';
+  p1Buffer[len++] = '\0';
+
+  //-- telegram length does not vary much so it is
+  //-- a good idear to test it
+  if (len < avrgTelegramlen) 
+  {
+    Serial.printf("Telegram too short [%d]bytes; must be at least [%d]bytes... Bailout\r\n", len, avrgTelegramlen);
+    if (avrgTelegramlen > 60) avrgTelegramlen -= 10;
+    return;
+  }
+
   startTelegram = false;
   startTelegramPos = -1;
   p1BuffLen = strlen(p1Buffer);
@@ -408,7 +414,6 @@ void loopTransmitter()
   Serial.printf("Find last [/] .. in [%d]bytes\r\n", p1BuffLen);
   for(int i=p1BuffLen; (i>=0 && !startTelegram); i--)
   {
-    //Serial.printf("p1Buffer[%3d] > [%c]\r\n", i, p1Buffer[i]);
     if (p1Buffer[i] == '/')
     {
       startTelegram = true;
@@ -423,11 +428,9 @@ void loopTransmitter()
     return;
   }
 
-  //Serial.println("-------111111---------------------------------------------");
-  //Serial.print(p1Buffer);
-  Serial.println("-------222222---------------------------------------------");
+  Serial.println("------------------------------------------------------");
   Serial.print(&p1Buffer[startTelegramPos]);
-  Serial.println("----------------------------------------------------------");
+
   p1BuffLen = strlen(p1Buffer) - startTelegramPos;
   Serial.print("p1Telegram is ["); Serial.print(p1BuffLen); Serial.println("]bytes long");
   Serial.flush();
@@ -455,6 +458,7 @@ void setup()
   Serial1.begin(115200);
 
   readSwitches();
+
   isReceiver = digitalRead(PIN_MODE);
   
   for (int i=0; i<10; i++)  
@@ -465,22 +469,35 @@ void setup()
   }
   Serial.println();
   //--- now setup radio's ----
-  radio.begin();
+  if (!radio.begin())
+  {
+    Serial.println("\r\nNo NRF24L01 tranceiver found!");
+    for (int i=0; i<50; i++)
+    {
+      digitalWrite(PIN_LED, CHANGE);
+      delay(100);
+    }
+    resetViaSWR(); 
+    Serial.println();
+  }
   //-- Max power 
-  radio.setPALevel( RF24_PA_MAX ) ; 
+  //radio.setPALevel( RF24_PA_MAX ) ; powerMode
+  radio.setPALevel( powerMode );
   // Min speed (for better range I presume)
   radio.setDataRate( RF24_250KBPS ) ; 
   //-- 8 bits CRC
   radio.setCRCLength( RF24_CRC_8 ) ; 
-  //-- Disable dynamic payloads 
-  //-- radio.write_register(DYNPD,0); 
+  //-- Enable dynamic payloads 
   radio.enableDynamicPayloads();
   //-- save on transmission time by setting the radio to only transmit the
   //-- number of bytes we need to transmit
   radio.setPayloadSize(_PAYLOAD_SIZE);  
   //-- increase the delay between retries & # of retries 
   radio.setRetries(10,10);  //-- 15 - 15 is the max!
-  radio.setChannel(0x61);
+
+  ///radio.setChannel(0x61);
+  Serial.printf("Set RF24 channel to [0x%x]/[%d]\r\n", channelNr, channelNr);
+  radio.setChannel(channelNr);
 
   if (isReceiver)
   {
