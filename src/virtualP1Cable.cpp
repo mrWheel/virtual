@@ -13,7 +13,7 @@
 *  Startup Time: "8ms"
 *  MultiVoltage I/O (MVIO): "Disabled"
 *  --
-*  Programmer: "jtag2updi"
+*  Programmer: "jtag2updi" 
 *-----------------------------------------------------*/
 
 #define _FW_VERSION "1.0 (23-07-2023)"
