@@ -16,6 +16,8 @@
 *  Programmer: "jtag2updi"
 *-----------------------------------------------------*/
 
+#define _FW_VERSION "1.0 (23-07-2023)"
+
 /*
  * PINS NAME     AVR128DB32        AVR128DB28
  * TXD0           PIN_PA0           PIN_PA0
@@ -35,10 +37,10 @@
  * SWITCH3        -                 PIN_PD5
  * SWITCH4        -                 PIN_PD6
 */
-#if defined( IS_AVR128DB32 )
+#if defined( __AVR_AVR128DB32__ )
   #define PIN_CE      PIN_PF1
   #define PIN_CSN     PIN_PF2
-#elif defined( IS_AVR128DB28 )
+#elif defined( __AVR_AVR128DB28__ )
   #define PIN_CE      PIN_PD1
   #define PIN_CSN     PIN_PD2
 #else
@@ -78,7 +80,7 @@ char minTelegram[] =
 
 RF24 radio(PIN_CE, PIN_CSN); // CE, CSN
 
-const byte pipeName[6] = "vrtP1";
+byte      pipeName[6] = {};
 
 bool      isReceiver;
 byte      channelNr = 0x61;
@@ -137,6 +139,20 @@ bool readSwitches()
     Serial.println("RF24 Power set to LOW");
   }
   //x[0] = digitalRead(BAUD_SET);
+  /*
+  **    |      SWITCH     | CHANNEL
+  **    |  1  |   2 |   3 |
+  **    +-----------------+---------
+  **    | off | off | off | x54 - x65
+  **    | On  | off | off | x14 - x25
+  **    | off | On  | off | x44 - x55
+  **    | On  | On  | off | x04 - x15
+  **    | off | off | On  | x50 - x61
+  **    | On  | off | On  | x10 - x21
+  **    | off | On  | On  | x40 - x51
+  **    | On  | On  | On  | x00 - x11
+  **
+  */
   CLR_BIT(channelNr,0);
   CLR_BIT(channelNr,1);
   if (digitalRead(SWITCH2))
@@ -151,6 +167,7 @@ bool readSwitches()
         SET_BIT(channelNr,6);
   else  CLR_BIT(channelNr,6);
   CLR_BIT(channelNr,7);
+  channelNr += 0x11;
 
 } //  readSwitches()
 
@@ -455,35 +472,35 @@ void setup()
 
   Serial.begin(115200);
   Serial.println("\n\n\nAnd than it begins ....");
+  Serial.printf("Firmware version v%s\r\n", _FW_VERSION);
+  //-- P1 data 
   Serial1.begin(115200);
 
   readSwitches();
+
+  snprintf(pipeName, 6, "P1-%02x", channelNr);
 
   isReceiver = digitalRead(PIN_MODE);
   
   for (int i=0; i<10; i++)  
   {
     digitalWrite(PIN_LED, CHANGE);
-    Serial.print(">>>");
     delay(200);
   }
   Serial.println();
   //--- now setup radio's ----
   if (!radio.begin())
   {
-    Serial.println("\r\nNo NRF24L01 tranceiver found!");
-    for (int i=0; i<50; i++)
+    Serial.println("\r\nNo NRF24L01 tranceiver found!\r");
+    while(true)
     {
       digitalWrite(PIN_LED, CHANGE);
       delay(100);
     }
-    resetViaSWR(); 
-    Serial.println();
   }
-  //-- Max power 
-  //radio.setPALevel( RF24_PA_MAX ) ; powerMode
+  //-- Set Transmitter Power 
   radio.setPALevel( powerMode );
-  // Min speed (for better range I presume)
+  //-- Min speed (for better range I presume)
   radio.setDataRate( RF24_250KBPS ) ; 
   //-- 8 bits CRC
   radio.setCRCLength( RF24_CRC_8 ) ; 
@@ -492,10 +509,10 @@ void setup()
   //-- save on transmission time by setting the radio to only transmit the
   //-- number of bytes we need to transmit
   radio.setPayloadSize(_PAYLOAD_SIZE);  
-  //-- increase the delay between retries & # of retries 
+  //-- increase the delay between retries and # of retries 
   radio.setRetries(10,10);  //-- 15 - 15 is the max!
 
-  ///radio.setChannel(0x61);
+  //-- set Channel
   Serial.printf("Set RF24 channel to [0x%x]/[%d]\r\n", channelNr, channelNr);
   radio.setChannel(channelNr);
 

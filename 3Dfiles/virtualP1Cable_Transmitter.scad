@@ -1,9 +1,9 @@
 //-----------------------------------------------------------------------
 // Yet Another Parameterized Projectbox generator
 //
-//  This is a box for virtualP1Cable - transmitter
+//  This is a box for virtualP1Cable - transmitter/receiver
 //
-//  Version 2.0 (15-07-2023)
+//  Version 2.0 (21-07-2023)
 //
 // This design is parameterized based on the size of a PCB.
 //
@@ -168,7 +168,8 @@ cutoutsBase =   [
 // (5) = { yappRectangle | yappCircle }
 // (6) = { yappCenter }
 cutoutsLid  =   [
-                   [-3, 30, 8, 13, 0, yappRectangle]                    //-- antennaConnector
+                   [-3,   30,    8, 13, 0, yappRectangle]               //-- antennaConnector
+                 , [47,    9,   14, 17, 0, yappRectangle ]              //-- RJ12
                  , [49.5, 41.5, 12, 14, 0, yappRectangle, yappCenter]   //-- switchBlock
                 ];
 
@@ -199,7 +200,7 @@ cutoutsGrill =[
 // (5) = { yappRectangle | yappCircle }
 // (6) = { yappCenter }
 cutoutsFront =  [
-                   [9, -1, 14, 14, 0, yappRectangle]
+                   [9, -1, 14, 16, 0, yappRectangle]
               //    , [30, 7.5, 15, 9, 0, yappRectangle, yappCenter]
               //    , [0, 2, 10, 0, 0, yappCircle]
                 ];
@@ -213,7 +214,7 @@ cutoutsFront =  [
 // (5) = { yappRectangle | yappCircle }
 // (6) = { yappCenter }
 cutoutsBack =   [
-                  // [34, 13, 8, 8, 0, yappCircle]
+                  [34, 16, 11.5, 11.5, 0, yappCircle]
                 ];
 
 //-- left plane   -- origin is pcb[0,0,0]
@@ -311,7 +312,7 @@ lightTubes = [
                 , [12.7, 13.6, 1.5, 5, 2, 1.5, yappRectangle]
               ];     
 
-//-- pushButtons  -- origin is pcb[0,0,0]
+//-- pushButtons  -- origin is pcb[0,0,02
 // (0) = posx
 // (1) = posy
 // (2) = capLength
@@ -337,6 +338,7 @@ pushButtons = [
 // (7) = "label text"
 labelsPlane =   [
                   [ 6,   13,   0, 1, "left",  "Liberation Mono:style=bold", 6, "Transmitter" ]
+               // [13,   13,   0, 1, "left",  "Liberation Mono:style=bold", 6, "Receiver" ]
                 , [ 7,    4,   0, 1, "left",  "Liberation Mono:style=bold", 4, "virtual P1 Cable" ]
                 , [10,    4,   0, 1, "right", "Liberation Mono:style=bold", 3, "By Willem Aandewiel" ]
                 , [12.5,  2.5, 0, 1, "front", "Liberation Mono:style=bold", 3, "P1 IN" ]
