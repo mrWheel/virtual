@@ -14,6 +14,9 @@
 *  MultiVoltage I/O (MVIO): "Disabled"
 *  --
 *  Programmer: "jtag2updi" 
+*
+* Don't forget to set fuses in "Project Tasks"
+* (will run "/<home>/.platformio/platforms/atmelmegaavr/builder/fuses.py")
 *-----------------------------------------------------*/
 
 #define _FW_VERSION "1.0 (23-07-2023)"
@@ -30,6 +33,7 @@
  * RXD1           PIN_PC1           PIN_PC1
  * BAUD_SET       -                 PIN_PC3
  * PIN_MODE       PIN_PF0           PIN_PF0
+ * RESET PIN      PF6               PF6      (set fuses!)
  * PIN_CE         PIN_PF1           PIN_PD1
  * PIN_CSN        PIN_PF2           PIN_PD2
  * SWITCH1        -                 PIN_PD3
@@ -470,11 +474,20 @@ void setup()
   pinMode(SWITCH4,  INPUT_PULLUP);
   pinMode(PIN_MODE, INPUT_PULLUP);
 
+  for (int i=0; i<10; i++)  
+  {
+    digitalWrite(PIN_LED, CHANGE);
+    delay(200);
+  }
+  
   Serial.begin(115200);
+  while(!Serial) { delay(10); }
+  Serial.flush();
   Serial.println("\n\n\nAnd than it begins ....");
   Serial.printf("Firmware version v%s\r\n", _FW_VERSION);
   //-- P1 data 
   Serial1.begin(115200);
+  while(!Serial1) { delay(10); }
 
   readSwitches();
 
@@ -482,12 +495,6 @@ void setup()
 
   isReceiver = digitalRead(PIN_MODE);
   
-  for (int i=0; i<10; i++)  
-  {
-    digitalWrite(PIN_LED, CHANGE);
-    delay(200);
-  }
-  Serial.println();
   //--- now setup radio's ----
   if (!radio.begin())
   {
