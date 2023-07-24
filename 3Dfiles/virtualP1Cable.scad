@@ -15,13 +15,78 @@
 //
 //-----------------------------------------------------------------------
 
-insertDiam          = 4.25; //-- PLA Basic / BL-X1 Carbon
+//-- Transmitter(true) or Receiver (false)
+printTransmitter    = false;
 
-//-- switchBlock dimensions
-switchWallThickness =  1;
-switchWallHeight    = 10;
-switchLength        = 14;
-switchWidth         = 12;
+//-- cutout Monitor and UPDI headers for development
+isDevelopment       = true;
+
+//-- is the filament transparent (true) or not (false)
+//-- if (true) lightTubes will go all the way through the Lid
+transparentFilament = false;
+
+//-- which part(s) do you want to print?
+printBase           = true;
+printLid            = true;
+printExtenders      = true;
+printSupportPillar  = true;
+
+//-- PLA Basic / BL-X1 Carbon
+insertDiam          = 4.25; 
+
+//-- print PCB stl
+printPCBstl         = false;
+
+/****************************************************************/
+/***  You should not have to change anything below this line  ***/
+/***  You should not have to change anything below this line  ***/
+/****************************************************************/
+
+typeText = printTransmitter ? 
+         [ 6,   13,   0, 1, "right",  "Liberation Mono:style=bold", 6, "Transmitter" ]
+        :
+         [13,   13,   0, 1, "right",  "Liberation Mono:style=bold", 6, "Receiver" ]
+        ;
+
+p1Text   = printTransmitter ? 
+         [28,  13, 0, 1, "front", "Liberation Mono:style=bold", 5, "P1 IN" ]
+        :
+         [28,  13, 0, 1, "front", "Liberation Mono:style=bold", 5, "P1 OUT" ]
+        ;
+        
+//--------------------------//
+//-- yappRectangle  = -1    //
+//-- yappCenter]    = -12   //
+//-- yappThroughLid = -20   //
+//--------------------------//
+monitorIn = isDevelopment ?
+            [ 14.5,  5,    4, 12, 0, -1, -12]   //-- Monitor
+          : 
+            []
+          ;
+monitorTxt = isDevelopment ?
+             [10,  16, 0, 1, "left", "Liberation Mono:style=bold", 4, "G T R" ]
+           :
+             [ ]
+           ;
+
+updiIn = isDevelopment ?
+            [ 4,   18.7, 12,  4, 0, -1, -12]   //-- UPDI
+          : 
+            []
+          ;
+updiTxt = isDevelopment ?
+             [26,  16, 0, 1, "back", "Liberation Mono:style=bold", 4, "+ G U" ]
+           : 
+             [ ]
+           ;
+        
+transparent = transparentFilament ?
+            -99
+          : 
+            -20
+          ;
+
 
 
 include <./library/YAPPgenerator_v20.scad>
@@ -35,13 +100,20 @@ see https://polyd.com/en/conversione-step-to-stl-online
 
 myPcb = "./MODELS/virtualP1Cable_v10_Transmitter_Model.stl";
 
-if (false)
+if (printPCBstl)
 {
-  translate([-145.5, 157.5, 5.0]) 
+  translate([-145.5, 157.5, 5.5]) 
   {
     rotate([0,0,0]) color("lightgray") import(myPcb);
   }
 }
+
+
+//-- switchBlock dimensions
+switchWallThickness =  1;
+switchWallHeight    = 11;
+switchLength        = 15;
+switchWidth         = 13;
 
 
 // Note: length/lengte refers to X axis, 
@@ -71,9 +143,9 @@ if (false)
 
 
 //-- which part(s) do you want to print?
-printBaseShell        = true;
-printLidShell         = true;
-printSwitchExtenders  = true;
+printBaseShell        = printBase;
+printLidShell         = printLid;
+printSwitchExtenders  = printExtenders;
 
 //-- pcb dimensions -- very important!!!
 pcbLength           = 62.3;
@@ -109,7 +181,7 @@ roundRadius         = 2.0;
 standoffHeight      = 4.0;  //-- only used for showPCB
 standoffPinDiameter = 2.2;
 standoffHoleSlack   = 0.4;
-standoffDiameter    = 7;
+standoffDiameter    = 5;
 
 
 //-- D E B U G -----------------//-> Default ---------
@@ -169,8 +241,10 @@ cutoutsBase =   [
 // (6) = { yappCenter }
 cutoutsLid  =   [
                    [-3,   30,    8, 13, 0, yappRectangle]               //-- antennaConnector
-                 , [47,    9,   14, 17, 0, yappRectangle ]              //-- RJ12
-                 , [49.5, 41.5, 12, 14, 0, yappRectangle, yappCenter]   //-- switchBlock
+                 , [48,    8.5, 15, 15, 0, yappRectangle ]              //-- RJ12
+                 , [49.5, 41.5, 13, 15, 0, yappRectangle, yappCenter]   //-- switchBlock
+                 , monitorIn                                            //-- Monitor
+                 , updiIn                                               //-- UPDI
                 ];
 
 //-- cutoutsGrill    -- origin is pcb[0,0,0]
@@ -200,9 +274,7 @@ cutoutsGrill =[
 // (5) = { yappRectangle | yappCircle }
 // (6) = { yappCenter }
 cutoutsFront =  [
-                   [9, -1, 14, 16, 0, yappRectangle]
-              //    , [30, 7.5, 15, 9, 0, yappRectangle, yappCenter]
-              //    , [0, 2, 10, 0, 0, yappCircle]
+                   [8.5, 0, 15, 16, 0, yappRectangle]    //-- RJ12
                 ];
 
 //-- back plane  -- origin is pcb[0,0,0]
@@ -289,12 +361,6 @@ snapJoins   =   [
                 , [10, 3, yappBack]
                 , [10, 3, yappLeft]
                 , [pcbLength-10, 3, yappRight]
-
-              //    [2,               5, yappLeft, yappRight, yappSymmetric]
-              //    [5,              10, yappLeft]
-              //  , [shellLength-2,  10, yappLeft]
-              //  , [20,             10, yappFront, yappBack]
-              //  , [2.5,             5, yappBack,  yappFront, yappSymmetric]
                 ];
                
 //-- lightTubes  -- origin is pcb[0,0,0]
@@ -308,8 +374,8 @@ snapJoins   =   [
 // (7) = tubeType  {yappCircle|yappRectangle}
 lightTubes = [
               //--- 0,   1,    2,   3, 4, 5,   6/7
-                  [46.7, 4,    1.5, 5, 2, 1.5, yappCircle]
-                , [12.7, 13.6, 1.5, 5, 2, 1.5, yappRectangle]
+                  [46.7, 4,    1.5, 5, 2, 1.5, transparent, yappCircle]
+                , [12.7, 13.6, 1.5, 5, 2, 1.5, transparent, yappRectangle]
               ];     
 
 //-- pushButtons  -- origin is pcb[0,0,02
@@ -323,8 +389,8 @@ lightTubes = [
 // (7) = poleDiameter
 // (8) = buttonType  {yappCircle|yappRectangle}
 pushButtons = [
-              //-- 0,  1, 2, 3, 4, 5,   6, 7,   8
-                [pcbLength-11.5, 30, 8, 8, 0, 1,   1, 3.5, yappCircle]
+                //--          0,  1, 2, 3, 4, 5, 6, 7,   8
+                [pcbLength-11.5, 30, 8, 8, 0, 1.5, 1, 3.5, yappCircle]
               ];     
              
 //-- origin of labels is box [0,0,0]
@@ -337,11 +403,15 @@ pushButtons = [
 // (6) = size
 // (7) = "label text"
 labelsPlane =   [
-                  [ 6,   13,   0, 1, "left",  "Liberation Mono:style=bold", 6, "Transmitter" ]
-               // [13,   13,   0, 1, "left",  "Liberation Mono:style=bold", 6, "Receiver" ]
-                , [ 7,    4,   0, 1, "left",  "Liberation Mono:style=bold", 4, "virtual P1 Cable" ]
-                , [10,    4,   0, 1, "right", "Liberation Mono:style=bold", 3, "By Willem Aandewiel" ]
-                , [12.5,  2.5, 0, 1, "front", "Liberation Mono:style=bold", 3, "P1 IN" ]
+                  typeText
+               // [ 6, 13,   0, 1, "left",  "Liberation Mono:style=bold", 6, "Transmitter" ]
+               // [13, 13,   0, 1, "left",  "Liberation Mono:style=bold", 6, "Receiver" ]
+                , [ 7,  4,   0, 1, "left",  "Liberation Mono:style=bold", 4, "virtual P1 Cable" ]
+                , [8,   4,   0, 1, "right", "Liberation Mono:style=bold", 4, "Willem Aandewiel" ]
+                , p1Text
+                // [12.5,  2.5, 0, 1, "front", "Liberation Mono:style=bold", 3, "P1 IN" ]
+                , updiTxt
+                , monitorTxt
                 ];
 
 
@@ -352,6 +422,9 @@ module lidHookInside()
 {
   echo("lidHookInside(original) ..");
   
+  //translate([(49.5+wallThickness+paddingFront)
+  //              , (41.5+wallThickness+paddingRight)
+  //              , (switchWallHeight+0)/-2])
   translate([(49.5+wallThickness+paddingFront)
                 , (41.5+wallThickness+paddingRight)
                 , (switchWallHeight+0)/-2])
@@ -359,6 +432,7 @@ module lidHookInside()
     difference()
     {
       //-- [49.5, 41.5, 12, 14, 0, yappRectangle, yappCenter]   //-- switchBlock
+      //-- [49.5, 41.5, 13, 15, 0, yappRectangle, yappCenter]   //-- switchBlock
 
       color("blue") cube([switchLength, switchWidth, switchWallHeight], center=true);
       color("red")  cube([switchLength-switchWallThickness, 
@@ -390,8 +464,12 @@ module baseHookOutside()
   
 } // baseHookOutside(dummy)
 
-
-
+//----------------------------------------------------------
+//-- support Pillar for the nRF24L01-plus
+if (printSupportPillar)
+{
+  translate([-13, 5 ,0]) cube([6,6,8]);
+}
 
 //---- This is where the magic happens ----
 YAPPgenerate();

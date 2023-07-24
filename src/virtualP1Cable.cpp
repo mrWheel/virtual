@@ -19,7 +19,7 @@
 * (will run "/<home>/.platformio/platforms/atmelmegaavr/builder/fuses.py")
 *-----------------------------------------------------*/
 
-#define _FW_VERSION "1.0 (23-07-2023)"
+#define _FW_VERSION "1.0 (24-07-2023)"
 
 /*
  * PINS NAME     AVR128DB32        AVR128DB28
@@ -31,7 +31,7 @@
  * PIN_LED        PIN_PA7           PIN_PA7
  * TXD1           PIN_PC0           PIN_PC0
  * RXD1           PIN_PC1           PIN_PC1
- * BAUD_SET       -                 PIN_PC3
+ * DSMR_VRS       -                 PIN_PC3
  * PIN_MODE       PIN_PF0           PIN_PF0
  * RESET PIN      PF6               PF6      (set fuses!)
  * PIN_CE         PIN_PF1           PIN_PD1
@@ -51,7 +51,7 @@
   #error No Processor selected!
 #endif
 #define PIN_LED     PIN_PA7
-#define BAUD_SET    PIN_PC3
+#define DSMR_VRS    PIN_PC3
 #define PIN_MODE    PIN_PF0
 #define SWITCH1     PIN_PD3
 #define SWITCH2     PIN_PD4
@@ -87,6 +87,7 @@ RF24 radio(PIN_CE, PIN_CSN); // CE, CSN
 byte      pipeName[6] = {};
 
 bool      isReceiver;
+bool      isDSMR_4Plus;
 byte      channelNr = 0x61;
 int       powerMode = RF24_PA_MIN;
 char      p1Buffer[_MAX_P1BUFFER+15];  // room for "!1234\0\r\n\r\n"
@@ -112,6 +113,23 @@ void resetViaSWR()
 } //  resetViaSWR()
 
 //--------------------------------------------------------------
+bool look4EOT(const char *payLoad) 
+{
+  if (payloadBuff[0] == '*'
+       && payloadBuff[1] == 'E'
+         && payloadBuff[2] == 'O'
+           && payloadBuff[3] == 'T'
+             && payloadBuff[4] == '*'
+     ) 
+  {
+    return true;
+  }
+
+  return false;
+
+} //  look4EOT()
+
+//--------------------------------------------------------------
 int findChar(const char *haystack, char needle) 
 {
   int16_t pos = 0;
@@ -125,12 +143,14 @@ int findChar(const char *haystack, char needle)
 } //  findChar()
 
 //--------------------------------------------------------------
-bool readSwitches() 
+bool readSettings() 
 {
-  //---- read switch1 .. switch4 and baud_set
+  Serial.println("Read the Switches ...");
+  //---- read PIN_MODE, SWITCH1 .. SWITCH4 and DSMR_VRS
   //---- en doe daar wat mee
   isReceiver = digitalRead(PIN_MODE);
-  Serial.println("Read the Switches ...");
+
+  isDSMR_4Plus = digitalRead(DSMR_VRS);
 
   if (digitalRead(SWITCH1))
   {
@@ -142,7 +162,7 @@ bool readSwitches()
     powerMode = RF24_PA_LOW;
     Serial.println("RF24 Power set to LOW");
   }
-  //x[0] = digitalRead(BAUD_SET);
+  //x[0] = digitalRead(DSMR_VRS);
   /*
   **    |      SWITCH     | CHANNEL
   **    |  1  |   2 |   3 |
@@ -173,7 +193,7 @@ bool readSwitches()
   CLR_BIT(channelNr,7);
   channelNr += 0x11;
 
-} //  readSwitches()
+} //  readSettings()
 
 
 //--------------------------------------------------------------
@@ -263,6 +283,9 @@ void loopReceiver()
 {
   bool foundSlash   = false;
   bool foundEOT     = false;
+  p1BuffLen         = 0;
+  p1BuffPos         = 0;
+  memset(p1Buffer, 0, _MAX_P1BUFFER);
 
   if (radio.available()) 
   {
@@ -275,9 +298,11 @@ void loopReceiver()
     int posSlash = findChar(payloadBuff, '/');
     if (posSlash >= 0)
     {
+      Serial.println("Found '/' ...");
       foundSlash  = true;
       digitalWrite(PIN_LED, HIGH); 
       memset(p1Buffer, 0, _MAX_P1BUFFER+10);
+      p1BuffLen = 0;
       p1BuffPos = 0;
       memcpy(&p1Buffer[p1BuffPos], payloadBuff, bytesRead);
       p1BuffPos += bytesRead;
@@ -295,13 +320,7 @@ void loopReceiver()
       {
         uint8_t bytesRead = radio.getDynamicPayloadSize();
         radio.read(&payloadBuff, bytesRead);
-        //-- did we receive a EOT-token?
-        if (    payloadBuff[0] == '*'
-              && payloadBuff[1] == 'E'
-               && payloadBuff[2] == 'O'
-                && payloadBuff[3] == 'T'
-                 && payloadBuff[4] == '*'
-            ) 
+        if (look4EOT(payloadBuff))
         {
           Serial.println("\r\nfound EOT token!");
           foundEOT = true;
@@ -316,9 +335,11 @@ void loopReceiver()
     }
 
     Serial.println();
-    Serial.printf("+++++telegram is [%d]bytes++++++++++++++++++++\r\n", strlen(p1Buffer)-startTelegramPos);
+    int telegramLen = strlen(p1Buffer)-startTelegramPos; 
+    Serial.printf("+++++telegram is [%d]bytes++++++++++++++++++++\r\n", telegramLen);
     Serial.print(&p1Buffer[startTelegramPos]);
     Serial1.print(&p1Buffer[startTelegramPos]);
+
     //-- reset rebootTimer --
     rebootTimer = millis() + _REBOOT_TIME;
     Serial.printf("Telegram received in %d milliseconds!\r\n", (millis() - startTime));
@@ -354,6 +375,9 @@ void loopTransmitter()
   memset(orgCRC,   0, sizeof(orgCRC));
 
   memset(p1Buffer, 0, _MAX_P1BUFFER+10);
+  p1BuffLen = 0;
+  p1BuffPos = 0;
+
   //-- set timeout to 15 seconds ....
   Serial1.setTimeout(_MAX_TIMEOUT);
   waitTimer = millis();
@@ -386,13 +410,16 @@ void loopTransmitter()
   //-- track back to first non-control char
   for (int p=0; p>-10; p--)
   {
+    Serial.printf(">[%c] ", p1Buffer[len-p]);
     //-- test if not a control char
     if ((p1Buffer[len-p] >= ' ') && (p1Buffer[len-p] <= '~'))
     {
       len-=p;
+      Serial.println();
       break;
     }
   }
+  Serial.println();
   //Serial.printf("After track Back len in [%d] bytes (last char[%c]\r\n", len, p1Buffer[len]);
   //                                                               len
   //  1...5...1...5...2...5...3                       ..............| 
@@ -413,6 +440,7 @@ void loopTransmitter()
       p1Buffer[len++] = orgCRC[i];
     }
   }
+
   p1Buffer[len++] = '\r';
   p1Buffer[len++] = '\n';
   p1Buffer[len++] = '\r';
@@ -439,7 +467,7 @@ void loopTransmitter()
     {
       startTelegram = true;
       startTelegramPos = i;
-      Serial.printf("\r\nnStart telegram [/] found at byte[%d] ...\r\n\n", startTelegramPos);
+      Serial.printf("\r\nStart telegram [/] found at byte[%d] ...\r\n\n", startTelegramPos);
       break;
     }
   }
@@ -467,7 +495,7 @@ void loopTransmitter()
 void setup() 
 {
   pinMode(PIN_LED,  OUTPUT);
-  pinMode(BAUD_SET, INPUT_PULLUP);
+  pinMode(DSMR_VRS, INPUT_PULLUP);
   pinMode(SWITCH1,  INPUT_PULLUP);
   pinMode(SWITCH2,  INPUT_PULLUP);
   pinMode(SWITCH3,  INPUT_PULLUP);
@@ -485,11 +513,22 @@ void setup()
   Serial.flush();
   Serial.println("\n\n\nAnd than it begins ....");
   Serial.printf("Firmware version v%s\r\n", _FW_VERSION);
-  //-- P1 data 
-  Serial1.begin(115200);
-  while(!Serial1) { delay(10); }
 
-  readSwitches();
+  readSettings();
+  //-- P1 data 
+  if (isDSMR_4Plus)
+  {
+    Serial.println("P1 port set to 115200bps, 8N1");
+    Serial.println("Set for DSMR version 4.n or 5.n.");
+    Serial1.begin(115200, SERIAL_8N1);
+  }
+  else
+  {
+    Serial.println("P1 port set to 9600bps, 7E1");
+    Serial.println("Set for DSMR version 2.n or 3.n");
+    Serial1.begin(9600, SERIAL_7E1);
+  }
+  while(!Serial1) { delay(10); }
 
   snprintf(pipeName, 6, "P1-%02x", channelNr);
 
