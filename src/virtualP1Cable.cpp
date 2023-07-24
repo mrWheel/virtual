@@ -530,7 +530,9 @@ void setup()
   }
   while(!Serial1) { delay(10); }
 
-  snprintf(pipeName, 6, "P1-%02x", channelNr);
+  char tmpName[7];
+  snprintf(tmpName, 6, "P1-%02x", channelNr);
+  for(int n=0; n<6; n++)  pipeName[n] = tmpName[n];
 
   isReceiver = digitalRead(PIN_MODE);
   
