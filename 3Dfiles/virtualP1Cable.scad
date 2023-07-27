@@ -3,7 +3,7 @@
 //
 //  This is a box for virtualP1Cable - transmitter/receiver
 //
-//  Version 2.0 (21-07-2023)
+//  Version 2.0 (24-07-2023)
 //
 // This design is parameterized based on the size of a PCB.
 //
@@ -16,10 +16,10 @@
 //-----------------------------------------------------------------------
 
 //-- Transmitter(true) or Receiver (false)
-printTransmitter    = false;
+printTransmitter    = true;
 
 //-- cutout Monitor and UPDI headers for development
-isDevelopment       = true;
+isDevelopment       = false;
 
 //-- is the filament transparent (true) or not (false)
 //-- if (true) lightTubes will go all the way through the Lid
@@ -390,7 +390,7 @@ lightTubes = [
 // (8) = buttonType  {yappCircle|yappRectangle}
 pushButtons = [
                 //--          0,  1, 2, 3, 4, 5, 6, 7,   8
-                [pcbLength-11.5, 30, 8, 8, 0, 1.5, 1, 3.5, yappCircle]
+                [pcbLength-11.5, 30, 8, 8, 0, 2, 1, 3.5, yappCircle]
               ];     
              
 //-- origin of labels is box [0,0,0]

@@ -3,7 +3,7 @@
 **  Yet Another Parameterised Projectbox generator
 **
 */
-Version="v2.0.4 (23-07-2023)";
+Version="v2.0.4 (27-07-2023)";
 /*
 **
 **  Copyright (c) 2021, 2022, 2023 Willem Aandewiel
@@ -1597,7 +1597,8 @@ module makeLightTubes()
     //-debug-echo("makeLightTubes()", xPos=xPos, yPos=yPos, tLength=tLength, tWidth=tWidth, tWall=tWall, tAbvPcb=tAbvPcb);
     if (isTrue(yappCircle, tube))
     {
-      tmpArray = [[xPos, yPos, tLength, tWidth, tWidth, yappCircle, yappCenter]];
+      //-tst-tmpArray = [[xPos, yPos, tLength, tWidth, tWidth, yappCircle, yappCenter]];
+      tmpArray = [[xPos, yPos, tWidth, tWidth, yappCircle, yappCenter]];
       //-debug-echo("makeLightTubes(Circle)", tmpArray=tmpArray);
       cutoutsInXY("lid", tmpArray);
     }
@@ -3200,7 +3201,7 @@ module printSwitchPlate(poleDiam, capLength, buttonPlateThickness, yPos)
       translate([0,0,-0.5])
         color("blue")
           //-tst-cylinder(h=buttonPlateThickness, d=poleDiam+0.1+(buttonSlack/2), center=true);
-          cylinder(h=buttonPlateThickness, d=poleDiam+0.1-(buttonSlack/2), center=true);
+          cylinder(h=buttonPlateThickness, d=poleDiam+0.2-(buttonSlack/2), center=true);
     }
   }
     

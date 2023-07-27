@@ -19,7 +19,7 @@
 * (will run "/<home>/.platformio/platforms/atmelmegaavr/builder/fuses.py")
 *-----------------------------------------------------*/
 
-#define _FW_VERSION "1.0 (24-07-2023)"
+#define _FW_VERSION "1.0 (26-07-2023)"
 
 /*
  * PINS NAME     AVR128DB32        AVR128DB28
@@ -36,10 +36,10 @@
  * RESET PIN      PF6               PF6      (set fuses!)
  * PIN_CE         PIN_PF1           PIN_PD1
  * PIN_CSN        PIN_PF2           PIN_PD2
- * SWITCH1        -                 PIN_PD3
- * SWITCH2        -                 PIN_PD4
- * SWITCH3        -                 PIN_PD5
- * SWITCH4        -                 PIN_PD6
+ * SWITCH4        -                 PIN_PD3
+ * SWITCH1        -                 PIN_PD4
+ * SWITCH2        -                 PIN_PD5
+ * SWITCH3        -                 PIN_PD6
 */
 #if defined( __AVR_AVR128DB32__ )
   #define PIN_CE      PIN_PF1
@@ -53,10 +53,10 @@
 #define PIN_LED     PIN_PA7
 #define DSMR_VRS    PIN_PC3
 #define PIN_MODE    PIN_PF0
-#define SWITCH1     PIN_PD3
-#define SWITCH2     PIN_PD4
-#define SWITCH3     PIN_PD5
-#define SWITCH4     PIN_PD6
+#define SWITCH1     PIN_PD4
+#define SWITCH2     PIN_PD5
+#define SWITCH3     PIN_PD6
+#define SWITCH4     PIN_PD3
 
 #define SET_BIT(x, pos) (x |= (1U << pos))
 #define CLR_BIT(x, pos) (x &= (~(1U<< pos)))
@@ -102,11 +102,25 @@ uint32_t  errCount;
 char      orgCRC[10];
 int16_t   orgCRClen;
 
+
+//--------------------------------------------------------------
+void blinkLed(int nrTimes, int waitMs)
+{
+  for (int i=0; i<nrTimes; i++)
+  {
+    digitalWrite(PIN_LED, CHANGE);
+    delay(waitMs);
+  }
+  digitalWrite(PIN_LED, LOW);
+
+} //  blinkLed()
+
 //--------------------------------------------------------------
 void resetViaSWR() 
 {
   Serial.println("\r\nSoftware reset ...\r\n");
   Serial.flush();
+  blinkLed(10, 30);
   delay(500);
   _PROTECTED_WRITE(RSTCTRL.SWRR,1);
 
@@ -146,13 +160,13 @@ int findChar(const char *haystack, char needle)
 bool readSettings() 
 {
   Serial.println("Read the Switches ...");
-  //---- read PIN_MODE, SWITCH1 .. SWITCH4 and DSMR_VRS
+  //---- read PIN_MODE, DSMR_VRS, SWITCH4 and SWITCH1/2/3
   //---- en doe daar wat mee
   isReceiver = digitalRead(PIN_MODE);
 
   isDSMR_4Plus = digitalRead(DSMR_VRS);
 
-  if (digitalRead(SWITCH1))
+  if (!digitalRead(SWITCH4))
   {
     powerMode = RF24_PA_MAX;
     Serial.println("RF24 Power set to MAX");
@@ -164,34 +178,35 @@ bool readSettings()
   }
   //x[0] = digitalRead(DSMR_VRS);
   /*
-  **    |      SWITCH     | CHANNEL
-  **    |  1  |   2 |   3 |
-  **    +-----------------+---------
-  **    | off | off | off | x54 - x65
-  **    | On  | off | off | x14 - x25
-  **    | off | On  | off | x44 - x55
-  **    | On  | On  | off | x04 - x15
-  **    | off | off | On  | x50 - x61
-  **    | On  | off | On  | x10 - x21
-  **    | off | On  | On  | x40 - x51
-  **    | On  | On  | On  | x00 - x11
+  **             |     SWITCH      |               ||
+  **  switch |   | [4] | [3] | [2] |               || 
+  **     bit | 7 |  6  |  5  |  4  | 3 | 2 | 1 | 0 || CHANNEL
+  **         +---+-----+-----+-----+---+---+---+---++--------  
+  **         | 0 | Off | Off | Off | 0 | 1 | 1 | 1 ||   12
+  **         | 0 | Off | Off | On  | 0 | 1 | 1 | 1 ||   28
+  **         | 0 | Off | On  | Off | 0 | 1 | 1 | 1 ||   44
+  **         | 0 | Off | On  | On  | 0 | 1 | 1 | 1 ||   60
+  **         | 0 | On  | Off | Off | 0 | 1 | 1 | 1 ||   76
+  **         | 0 | On  | Off | On  | 0 | 1 | 1 | 1 ||   92
+  **         | 0 | On  | On  | Off | 0 | 1 | 1 | 1 ||  108
+  **         | 0 | On  | On  | On  | 0 | 1 | 1 | 1 ||  124
   **
   */
-  CLR_BIT(channelNr,0);
-  CLR_BIT(channelNr,1);
-  if (digitalRead(SWITCH2))
-        SET_BIT(channelNr,2);
-  else  CLR_BIT(channelNr,2);
+  SET_BIT(channelNr,0);
+  SET_BIT(channelNr,1);
+  SET_BIT(channelNr,2);
   CLR_BIT(channelNr,3);
-  if (digitalRead(SWITCH3))
+  if (!digitalRead(SWITCH1))
         SET_BIT(channelNr,4);
   else  CLR_BIT(channelNr,4);
-  CLR_BIT(channelNr,5);
-  if (digitalRead(SWITCH4))
+  if (!digitalRead(SWITCH2))
+        SET_BIT(channelNr,5);
+  else  CLR_BIT(channelNr,5);
+  if (!digitalRead(SWITCH3))
         SET_BIT(channelNr,6);
   else  CLR_BIT(channelNr,6);
   CLR_BIT(channelNr,7);
-  channelNr += 0x11;
+  channelNr += 0x05;
 
 } //  readSettings()
 
@@ -233,13 +248,8 @@ void transmitTelegram(char *telegram, int telegramLen)
     while (!transmitOk && (errCount < _MAX_TRANSMIT_ERRORS));
     if (!transmitOk) 
     {
-      Serial.println("Max Transmit errors.. Bail out!");
-      for(int i=0; i<15; i++)
-      {
-        digitalWrite(PIN_LED, CHANGE);
-        delay(70);
-      }
-      digitalWrite(PIN_LED, LOW);
+      Serial.println("\r\nMax Transmit errors.. Bailout!");
+      blinkLed(15, 70);
       return;
     }
     startTelegramPos += _PAYLOAD_SIZE;
@@ -260,6 +270,7 @@ void transmitTelegram(char *telegram, int telegramLen)
     else              { delay(5); }
   }
   while (!transmitOk && (errCount < _MAX_TRANSMIT_ERRORS));
+
   Serial.printf("Telegram transmitted in %d milliseconds!\r\n", (millis()-startTime));
 
 } //  transmitTelegram()
@@ -298,7 +309,7 @@ void loopReceiver()
     int posSlash = findChar(payloadBuff, '/');
     if (posSlash >= 0)
     {
-      Serial.println("Found '/' ...");
+      Serial.println("\r\nFound '/' ...");
       foundSlash  = true;
       digitalWrite(PIN_LED, HIGH); 
       memset(p1Buffer, 0, _MAX_P1BUFFER+10);
@@ -310,8 +321,11 @@ void loopReceiver()
       startTime = millis();
     }
     
-    if (!foundSlash) return;
-
+    if (!foundSlash) 
+    {
+      blinkLed(1, 10);
+      return;
+    }
     foundEOT = false;
     while(!foundEOT && (p1BuffPos < (_MAX_P1BUFFER -15)) && (millis() < rebootTimer) )
     {
@@ -322,7 +336,7 @@ void loopReceiver()
         radio.read(&payloadBuff, bytesRead);
         if (look4EOT(payloadBuff))
         {
-          Serial.println("\r\nfound EOT token!");
+          Serial.println("Found '*EOT*' token!");
           foundEOT = true;
           digitalWrite(PIN_LED, LOW); 
         }
@@ -337,7 +351,12 @@ void loopReceiver()
     Serial.println();
     int telegramLen = strlen(p1Buffer)-startTelegramPos; 
     Serial.printf("+++++telegram is [%d]bytes++++++++++++++++++++\r\n", telegramLen);
+    Serial1.print(&p1Buffer[startTelegramPos]);
     Serial.print(&p1Buffer[startTelegramPos]);
+    //-- in case the DSMR-logger misses a telegram
+    delay(10);
+    Serial1.print(&p1Buffer[startTelegramPos]);
+    delay(10);
     Serial1.print(&p1Buffer[startTelegramPos]);
 
     //-- reset rebootTimer --
@@ -379,19 +398,24 @@ void loopTransmitter()
   p1BuffPos = 0;
 
   //-- set timeout to 15 seconds ....
-  Serial1.setTimeout(_MAX_TIMEOUT);
+  //-tst-Serial1.setTimeout(_MAX_TIMEOUT);
   waitTimer = millis();
   //-- read until "!" ("!" is not in p1Buffer!!!) --
   int len = Serial1.readBytesUntil('!', p1Buffer, (_MAX_P1BUFFER -15));
+
+  if (len < (avrgTelegramlen/2) ) { return; }
+
   Serial.printf("\r\nread [%d]bytes\r\n", len);
 
-  if (len > (_MAX_P1BUFFER - 20))
+  if (len >= (_MAX_P1BUFFER - 15))
   {
-    Serial.println("Something went wrong .. (no '!' found in input)");
-    Serial.println(p1Buffer);
-    Serial.println("\r\n==========");
-    Serial.println(".. Bailout! \r\n");
+    Serial.println("Something went wrong .. (no '!' found in input) .. Bailout!");
+    //Serial.println(p1Buffer);
+    //Serial.println("\r\n==========");
+    //Serial.println(".. Bailout! \r\n");
     Serial.flush();
+    blinkLed(10, 100);
+    waitTimer = millis();
     return;
   }
 
@@ -400,6 +424,8 @@ void loopTransmitter()
   {
     Serial.println("Max waittime expired! BialOut");
     Serial.flush();
+    blinkLed(20, 50);
+    waitTimer = millis();
     return;
   }
   //          1       2       3                                        len
@@ -410,7 +436,7 @@ void loopTransmitter()
   //-- track back to first non-control char
   for (int p=0; p>-10; p--)
   {
-    Serial.printf(">[%c] ", p1Buffer[len-p]);
+    //Serial.printf(">[%c] ", p1Buffer[len-p]);
     //-- test if not a control char
     if ((p1Buffer[len-p] >= ' ') && (p1Buffer[len-p] <= '~'))
     {
@@ -451,8 +477,9 @@ void loopTransmitter()
   //-- a good idear to test it
   if (len < avrgTelegramlen) 
   {
-    Serial.printf("Telegram too short [%d]bytes; must be at least [%d]bytes... Bailout\r\n", len, avrgTelegramlen);
+    Serial.printf("Telegram too short ([%d]bytes); must be at least [%d]bytes... Bailout\r\n", len, avrgTelegramlen);
     if (avrgTelegramlen > 60) avrgTelegramlen -= 10;
+    blinkLed(5, 100);
     return;
   }
 
@@ -474,6 +501,7 @@ void loopTransmitter()
   if (!startTelegram)
   {
     Serial.println("Not a valid start [/] found.. Bailout\r\n");
+    blinkLed(10, 50);
     return;
   }
 
@@ -496,22 +524,18 @@ void setup()
 {
   pinMode(PIN_LED,  OUTPUT);
   pinMode(DSMR_VRS, INPUT_PULLUP);
+  pinMode(SWITCH4,  INPUT_PULLUP);
   pinMode(SWITCH1,  INPUT_PULLUP);
   pinMode(SWITCH2,  INPUT_PULLUP);
   pinMode(SWITCH3,  INPUT_PULLUP);
-  pinMode(SWITCH4,  INPUT_PULLUP);
   pinMode(PIN_MODE, INPUT_PULLUP);
 
-  for (int i=0; i<10; i++)  
-  {
-    digitalWrite(PIN_LED, CHANGE);
-    delay(200);
-  }
+  blinkLed(10, 200);
   
   Serial.begin(115200);
   while(!Serial) { delay(10); }
   Serial.flush();
-  Serial.println("\n\n\nAnd than it begins ....");
+  Serial.println("\n\n\nAnd then it begins ....");
   Serial.printf("Firmware version v%s\r\n", _FW_VERSION);
 
   readSettings();
@@ -533,13 +557,11 @@ void setup()
   char tmpName[7];
   snprintf(tmpName, 6, "P1-%02x", channelNr);
   for(int n=0; n<6; n++)  pipeName[n] = tmpName[n];
-
-  isReceiver = digitalRead(PIN_MODE);
   
   //--- now setup radio's ----
   if (!radio.begin())
   {
-    Serial.println("\r\nNo NRF24L01 tranceiver found!\r");
+    Serial.println("\r\nNo NRF24L01 transceiver found!\r");
     while(true)
     {
       digitalWrite(PIN_LED, CHANGE);
@@ -566,12 +588,12 @@ void setup()
 
   if (isReceiver)
   {
-    Serial1.println("I'm a Receiver!");
+    Serial.println("I'm a Receiver!");
     setupReceiver();
   }
   else  
   {
-    Serial1.println("I'm a Transmitter!");
+    Serial.println("I'm a Transmitter!");
     setupTransmitter();
   }
   
@@ -583,4 +605,4 @@ void loop()
 {
   if (isReceiver) loopReceiver();
   else            loopTransmitter();
-}
+} //  loop()
