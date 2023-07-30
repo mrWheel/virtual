@@ -19,7 +19,7 @@
 * (will run "/<home>/.platformio/platforms/atmelmegaavr/builder/fuses.py")
 *-----------------------------------------------------*/
 
-#define _FW_VERSION "1.0 (26-07-2023)"
+#define _FW_VERSION "1.0 (28-07-2023)"
 
 /*
  * PINS NAME     AVR128DB32        AVR128DB28
@@ -64,6 +64,7 @@
 #include <SPI.h>
 #include <nRF24L01.h>
 #include <RF24.h>
+#include "CRC16.h"
 
 // "/KFM5KAIFA-METER\r\n\r\n1-0:1.8.1(000671.578*kWh)\r\n1-0:1.7.0(00.318*kW)\r\n!1E1D\r\n\r\n";
 char minTelegram[] =
@@ -78,6 +79,7 @@ char minTelegram[] =
 #define _MAX_P1BUFFER       10000
 #define _PAYLOAD_SIZE          20
 #define _MAX_TRANSMIT_ERRORS   50
+#define _SEND_INTERVAL        500 //-- every 4 seconds
 #define _MAX_LAST_TIME      30000 //-- 10 seconden
 #define _MAX_TIMEOUT         2000 //--  2 seconden
 #define _REBOOT_TIME      3000000 //-- iedere vijf minuten
@@ -97,7 +99,7 @@ bool      startTelegram;
 int16_t   startTelegramPos;
 int16_t   avrgTelegramlen = 500;
 char      payloadBuff[_PAYLOAD_SIZE+10];
-uint32_t  startTime, waitTimer, rebootTimer;
+uint32_t  sendTimer, startTime, waitTimer, rebootTimer;
 uint32_t  errCount;
 char      orgCRC[10];
 int16_t   orgCRClen;
@@ -179,7 +181,7 @@ bool readSettings()
   //x[0] = digitalRead(DSMR_VRS);
   /*
   **             |     SWITCH      |               ||
-  **  switch |   | [4] | [3] | [2] |               || 
+  **  switch |   | [1] | [2] | [3] |               || 
   **     bit | 7 |  6  |  5  |  4  | 3 | 2 | 1 | 0 || CHANNEL
   **         +---+-----+-----+-----+---+---+---+---++--------  
   **         | 0 | Off | Off | Off | 0 | 1 | 1 | 1 ||   12
@@ -209,6 +211,44 @@ bool readSettings()
   channelNr += 0x05;
 
 } //  readSettings()
+
+
+//--------------------------------------------------------------
+bool checkCRC(char *telegram, int telegramLen) 
+{
+  char recCrcChar[5]  = {};
+  char calcCrcChar[5] = {};
+  int telegramEnd;
+
+  //-- find position of '!'
+  for(int i=telegramLen; i>0; i--)
+  {
+    if (p1Buffer[i] == '!')
+    {
+      telegramEnd = i;
+      //Serial.printf("TelegramEnd at [%d]", telegramEnd);
+      break;
+    }
+  }
+  //Serial.printf(" => [%c]\r\n", p1Buffer[telegramEnd]);
+  for(int i=0; i<4; i++)  { recCrcChar[i] = tolower(p1Buffer[telegramEnd+1+i]); }
+  recCrcChar[4] = 0;
+  //Serial.printf("Received CRC [%s]\r\n", recCrcChar);
+  uint16_t calcCrc=CRC16(0x0000, &p1Buffer[startTelegramPos], telegramEnd+1);
+  snprintf(calcCrcChar, 5, "%04x", calcCrc);
+  //Serial.printf("Calculated CRC is: [%s]\r\n", calcCrcChar);
+  for(int t=0; t<4; t++)
+  {
+    if (recCrcChar[t] != calcCrcChar[t] ) 
+    {
+      Serial.printf("\r\nCRC error (received [%s], calculated [%s])\r\n\n", recCrcChar, toupper(calcCrcChar));
+      return false;
+    }
+  }
+
+  return true;
+
+} //  checkCRC()
 
 
 //--------------------------------------------------------------
@@ -271,7 +311,7 @@ void transmitTelegram(char *telegram, int telegramLen)
   }
   while (!transmitOk && (errCount < _MAX_TRANSMIT_ERRORS));
 
-  Serial.printf("Telegram transmitted in %d milliseconds!\r\n", (millis()-startTime));
+  Serial.printf("Telegram transmitted in %ld milliseconds!\r\n", (millis()-startTime));
 
 } //  transmitTelegram()
 
@@ -350,18 +390,30 @@ void loopReceiver()
 
     Serial.println();
     int telegramLen = strlen(p1Buffer)-startTelegramPos; 
+    int telegramEnd = 0;
     Serial.printf("+++++telegram is [%d]bytes++++++++++++++++++++\r\n", telegramLen);
-    Serial1.print(&p1Buffer[startTelegramPos]);
-    Serial.print(&p1Buffer[startTelegramPos]);
-    //-- in case the DSMR-logger misses a telegram
-    delay(10);
-    Serial1.print(&p1Buffer[startTelegramPos]);
-    delay(10);
-    Serial1.print(&p1Buffer[startTelegramPos]);
 
+    if (!checkCRC(&p1Buffer[startTelegramPos], telegramLen))
+    {
+      blinkLed(10, 100);
+      return;
+    }
+
+    uint32_t receiveTime = (millis() - startTime);
+    Serial.print(&p1Buffer[startTelegramPos]);
+    Serial.printf("Telegram received in %ld milliseconds!\r\n",receiveTime);
+
+    //sendTimer = millis();
+    //Serial.print("1>");
+    for(int r=0; r<3; r++)
+    {
+      Serial.printf("%d>", r);
+      Serial1.print(&p1Buffer[startTelegramPos]);
+      delay((r*30));
+    }
+    Serial.println();
     //-- reset rebootTimer --
     rebootTimer = millis() + _REBOOT_TIME;
-    Serial.printf("Telegram received in %d milliseconds!\r\n", (millis() - startTime));
   }
 
   if ( millis() >  rebootTimer)  { resetViaSWR(); }
