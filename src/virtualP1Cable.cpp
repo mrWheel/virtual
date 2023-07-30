@@ -79,10 +79,10 @@ char minTelegram[] =
 #define _MAX_P1BUFFER       10000
 #define _PAYLOAD_SIZE          20
 #define _MAX_TRANSMIT_ERRORS   50
-#define _SEND_INTERVAL        500 //-- every 4 seconds
-#define _MAX_LAST_TIME      30000 //-- 10 seconden
-#define _MAX_TIMEOUT         2000 //--  2 seconden
-#define _REBOOT_TIME      3000000 //-- iedere vijf minuten
+#define _SEND_INTERVAL        500 //-- milli seconds
+#define _MAX_LAST_TIME      30000 //-- milli seconds
+#define _MAX_TIMEOUT         2000 //-- milli secondes
+#define _REBOOT_TIME      3000000 //-- every fifty minutes
 
 RF24 radio(PIN_CE, PIN_CSN); // CE, CSN
 
