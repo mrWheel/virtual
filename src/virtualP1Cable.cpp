@@ -19,7 +19,7 @@
 * (will run "/<home>/.platformio/platforms/atmelmegaavr/builder/fuses.py")
 *-----------------------------------------------------*/
 
-#define _FW_VERSION "1.0 (30-07-2023)"
+#define _FW_VERSION "1.0 (29-07-2023)"
 
 /*
  * PINS NAME     AVR128DB32        AVR128DB28
