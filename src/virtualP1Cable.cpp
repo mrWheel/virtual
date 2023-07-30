@@ -19,7 +19,7 @@
 * (will run "/<home>/.platformio/platforms/atmelmegaavr/builder/fuses.py")
 *-----------------------------------------------------*/
 
-#define _FW_VERSION "1.0 (28-07-2023)"
+#define _FW_VERSION "1.0 (30-07-2023)"
 
 /*
  * PINS NAME     AVR128DB32        AVR128DB28
@@ -128,22 +128,6 @@ void resetViaSWR()
 
 } //  resetViaSWR()
 
-//--------------------------------------------------------------
-bool look4EOT(const char *payLoad) 
-{
-  if (payloadBuff[0] == '*'
-       && payloadBuff[1] == 'E'
-         && payloadBuff[2] == 'O'
-           && payloadBuff[3] == 'T'
-             && payloadBuff[4] == '*'
-     ) 
-  {
-    return true;
-  }
-
-  return false;
-
-} //  look4EOT()
 
 //--------------------------------------------------------------
 int findChar(const char *haystack, char needle) 
@@ -214,44 +198,6 @@ bool readSettings()
 
 
 //--------------------------------------------------------------
-bool checkCRC(char *telegram, int telegramLen) 
-{
-  char recCrcChar[5]  = {};
-  char calcCrcChar[5] = {};
-  int telegramEnd;
-
-  //-- find position of '!'
-  for(int i=telegramLen; i>0; i--)
-  {
-    if (p1Buffer[i] == '!')
-    {
-      telegramEnd = i;
-      //Serial.printf("TelegramEnd at [%d]", telegramEnd);
-      break;
-    }
-  }
-  //Serial.printf(" => [%c]\r\n", p1Buffer[telegramEnd]);
-  for(int i=0; i<4; i++)  { recCrcChar[i] = tolower(p1Buffer[telegramEnd+1+i]); }
-  recCrcChar[4] = 0;
-  //Serial.printf("Received CRC [%s]\r\n", recCrcChar);
-  uint16_t calcCrc=CRC16(0x0000, &p1Buffer[startTelegramPos], telegramEnd+1);
-  snprintf(calcCrcChar, 5, "%04x", calcCrc);
-  //Serial.printf("Calculated CRC is: [%s]\r\n", calcCrcChar);
-  for(int t=0; t<4; t++)
-  {
-    if (recCrcChar[t] != calcCrcChar[t] ) 
-    {
-      Serial.printf("\r\nCRC error (received [%s], calculated [%s])\r\n\n", recCrcChar, toupper(calcCrcChar));
-      return false;
-    }
-  }
-
-  return true;
-
-} //  checkCRC()
-
-
-//--------------------------------------------------------------
 void transmitTelegram(char *telegram, int telegramLen) 
 {
   bool transmitOk = false;
@@ -259,8 +205,11 @@ void transmitTelegram(char *telegram, int telegramLen)
   errCount         = 0;
   startTelegramPos = 0;
 
-  Serial.println("\r\nTransmit telegram ..\r\n");
+  Serial.printf("\r\nTransmit telegram ..(%d bytes)\r\n", telegramLen);
   digitalWrite(PIN_LED, HIGH);
+
+  uint16_t calcCrc=CRC16(0x0000, telegram, telegramLen);
+
   startTime = millis();
 
   while(startTelegramPos<telegramLen)
@@ -296,16 +245,17 @@ void transmitTelegram(char *telegram, int telegramLen)
     delay(10);
   }
 
-  //-- send End Of Telegram token
+  //-- send End Of Telegram token + CRC16 checksum
   memset(payloadBuff, 0, _PAYLOAD_SIZE);
-  memcpy(&payloadBuff[0], "*EOT*\r\n", 7);
+  snprintf(payloadBuff, _PAYLOAD_SIZE, "*EOT* %04x", calcCrc);
+  //Serial.printf("EOT Send [%s]\r\n", &payloadBuff);
 
   //---- ending "0" activates autoACK & Retry
   errCount = 0;
   do
   {
     transmitOk = radio.write(&payloadBuff, _PAYLOAD_SIZE, 0);
-    Serial.print(payloadBuff);
+    Serial.printf("EOT Send [%s]\r\n", &payloadBuff);
     if (!transmitOk)  { delay(10); errCount++; }
     else              { delay(5); }
   }
@@ -334,8 +284,10 @@ void loopReceiver()
 {
   bool foundSlash   = false;
   bool foundEOT     = false;
+  char calcCrcChar[5] = {};
   p1BuffLen         = 0;
   p1BuffPos         = 0;
+
   memset(p1Buffer, 0, _MAX_P1BUFFER);
 
   if (radio.available()) 
@@ -374,9 +326,28 @@ void loopReceiver()
       {
         uint8_t bytesRead = radio.getDynamicPayloadSize();
         radio.read(&payloadBuff, bytesRead);
-        if (look4EOT(payloadBuff))
+        //if (look4EOT(payloadBuff))
+        if (strncmp(payloadBuff, "*EOT*", 5) == 0)
         {
-          Serial.println("Found '*EOT*' token!");
+          Serial.printf("Found '*EOT*' token [%s]\r\n", payloadBuff);
+          for (int i=0; i<5; i++) 
+          {
+            orgCRC[i] = payloadBuff[6+i];
+          }
+          uint16_t calcCrc=CRC16(0x0000, p1Buffer, strlen(p1Buffer));
+          snprintf(calcCrcChar, 5, "%04x", calcCrc);
+          Serial.printf("  Received CRC[%s]\r\n", orgCRC);
+          Serial.printf("Calculated CRC[%s] ", calcCrcChar);
+          if (strncmp(calcCrcChar, orgCRC, 4 ) == 0)
+          {
+            Serial.println(" -> Match!");
+          }
+          else
+          {
+            Serial.println(" -> CRC error! Bailout!");
+            blinkLed(5, 50);
+            return;
+          }
           foundEOT = true;
           digitalWrite(PIN_LED, LOW); 
         }
@@ -392,12 +363,6 @@ void loopReceiver()
     int telegramLen = strlen(p1Buffer)-startTelegramPos; 
     int telegramEnd = 0;
     Serial.printf("+++++telegram is [%d]bytes++++++++++++++++++++\r\n", telegramLen);
-
-    if (!checkCRC(&p1Buffer[startTelegramPos], telegramLen))
-    {
-      blinkLed(10, 100);
-      return;
-    }
 
     uint32_t receiveTime = (millis() - startTime);
     Serial.print(&p1Buffer[startTelegramPos]);
