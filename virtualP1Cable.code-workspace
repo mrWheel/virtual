@@ -5,6 +5,10 @@
 		}
 	],
 	"settings": {
+<<<<<<< HEAD
+=======
+		"git.enabled": true,
+>>>>>>> 08baf3a (changes in .code-workspace)
 		"git-blame.gitWebUrl": ""
 	}
 }
