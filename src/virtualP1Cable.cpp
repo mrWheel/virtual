@@ -208,7 +208,7 @@ void transmitTelegram(char *telegram, int telegramLen)
   Serial.printf("\r\nTransmit telegram ..(%d bytes)\r\n", telegramLen);
   digitalWrite(PIN_LED, HIGH);
 
-  uint16_t calcCrc=CRC16(0x0000, telegram, telegramLen);
+  uint16_t calcCrc=CRC16(0x0000, (unsigned char*)telegram, telegramLen);
 
   startTime = millis();
 
@@ -334,7 +334,7 @@ void loopReceiver()
           {
             orgCRC[i] = payloadBuff[6+i];
           }
-          uint16_t calcCrc=CRC16(0x0000, p1Buffer, strlen(p1Buffer));
+          uint16_t calcCrc=CRC16(0x0000, (unsigned char*)p1Buffer, strlen(p1Buffer));
           snprintf(calcCrcChar, 5, "%04x", calcCrc);
           Serial.printf("  Received CRC[%s]\r\n", orgCRC);
           Serial.printf("Calculated CRC[%s] ", calcCrcChar);
