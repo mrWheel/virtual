@@ -5,7 +5,7 @@
 * Library: TMRh20/RF24, https://github.com/tmrh20/RF24/
 * --> by Dejan Nedelkovski, www.HowToMechatronics.com
 */
-/*------------------------------------------------------
+/*----------------------------------------------------------------------------
 *  Chip: "AVR128DB32" / "AVR128DB28"
 *  Clock Speed: "24 MHz internal"
 *  millis()/micros() timer: |TCB2 (recommended)"
@@ -14,12 +14,12 @@
 *  MultiVoltage I/O (MVIO): "Disabled"
 *  --
 *  Programmer: "jtag2updi" 
-*
-* Don't forget to set fuses in "Project Tasks"
-* (will run "/<home>/.platformio/platforms/atmelmegaavr/builder/fuses.py")
-*-----------------------------------------------------*/
+*-----------------------------------------------------------------------------
+* >>>>>> Don't forget to set fuses in "Project Tasks" <<<<<<
+* (will execute "/<home>/.platformio/platforms/atmelmegaavr/builder/fuses.py")
+*---------------------------------------------------------------------------*/
 
-#define _FW_VERSION "1.0 (30-07-2023)"
+#define _FW_VERSION "1.0 (02-08-2023)"
 
 /*
  * PINS NAME     AVR128DB32        AVR128DB28
@@ -66,6 +66,7 @@
 #include <RF24.h>
 #include "CRC16.h"
 
+/*** for testing ***
 // "/KFM5KAIFA-METER\r\n\r\n1-0:1.8.1(000671.578*kWh)\r\n1-0:1.7.0(00.318*kW)\r\n!1E1D\r\n\r\n";
 char minTelegram[] =
   "/KFM5KAIFA-METER\r\n"              //-- 18
@@ -75,6 +76,7 @@ char minTelegram[] =
   //----------------------------------//---> 69
   "!"                                 //---> 70
   "1E1D\r\n\r\n";
+***/
 
 #define _MAX_P1BUFFER       10000
 #define _PAYLOAD_SIZE          20
@@ -101,8 +103,8 @@ int16_t   avrgTelegramlen = 500;
 char      payloadBuff[_PAYLOAD_SIZE+10];
 uint32_t  sendTimer, startTime, waitTimer, rebootTimer;
 uint32_t  errCount;
-char      orgCRC[10];
-int16_t   orgCRClen;
+char      orgCrcChar[10];
+int16_t   orgCrcLen;
 
 
 //--------------------------------------------------------------
@@ -269,7 +271,7 @@ void transmitTelegram(char *telegram, int telegramLen)
 //--------------------------------------------------------------
 void setupReceiver()
 {
-  Serial.printf("I'm a RECEIVER for pipe [%s]...\r\n\n", pipeName);
+  Serial.printf("I'm a RECEIVER using pipe [%s]...\r\n\n", pipeName);
 
   radio.openReadingPipe(0, pipeName);
   radio.startListening();
@@ -282,11 +284,11 @@ void setupReceiver()
 //--------------------------------------------------------------
 void loopReceiver()
 {
-  bool foundSlash   = false;
-  bool foundEOT     = false;
+  bool foundSlash     = false;
+  bool foundEOT       = false;
   char calcCrcChar[5] = {};
-  p1BuffLen         = 0;
-  p1BuffPos         = 0;
+  p1BuffLen           = 0;
+  p1BuffPos           = 0;
 
   memset(p1Buffer, 0, _MAX_P1BUFFER);
 
@@ -332,13 +334,13 @@ void loopReceiver()
           Serial.printf("Found '*EOT*' token [%s]\r\n", payloadBuff);
           for (int i=0; i<5; i++) 
           {
-            orgCRC[i] = payloadBuff[6+i];
+            orgCrcChar[i] = payloadBuff[6+i];
           }
           uint16_t calcCrc=CRC16(0x0000, (unsigned char*)p1Buffer, strlen(p1Buffer));
           snprintf(calcCrcChar, 5, "%04x", calcCrc);
-          Serial.printf("  Received CRC[%s]\r\n", orgCRC);
+          Serial.printf("  Received CRC[%s]\r\n", orgCrcChar);
           Serial.printf("Calculated CRC[%s] ", calcCrcChar);
-          if (strncmp(calcCrcChar, orgCRC, 4 ) == 0)
+          if (strncmp(calcCrcChar, orgCrcChar, 4 ) == 0)
           {
             Serial.println(" -> Match!");
           }
@@ -367,9 +369,7 @@ void loopReceiver()
     uint32_t receiveTime = (millis() - startTime);
     Serial.print(&p1Buffer[startTelegramPos]);
     Serial.printf("Telegram received in %ld milliseconds!\r\n",receiveTime);
-
-    //sendTimer = millis();
-    //Serial.print("1>");
+    Serial.print("Send telegram to P1-OUT .. >");
     for(int r=0; r<3; r++)
     {
       Serial.printf("%d>", r);
@@ -392,7 +392,7 @@ void setupTransmitter()
 {
   memset(p1Buffer, 0, sizeof(p1Buffer));
 
-  Serial.printf("I'm a TRANSMITTER for pipe [%s]...\r\n\n", pipeName);
+  Serial.printf("I'm a TRANSMITTER using pipe [%s]...\r\n\n", pipeName);
   Serial1.setTimeout(10);
 
   radio.openWritingPipe(pipeName);
@@ -408,7 +408,7 @@ void loopTransmitter()
 
   if (!Serial1.available()) { return; }
 
-  memset(orgCRC,   0, sizeof(orgCRC));
+  memset(orgCrcChar,   0, sizeof(orgCrcChar));
 
   memset(p1Buffer, 0, _MAX_P1BUFFER+10);
   p1BuffLen = 0;
@@ -422,7 +422,7 @@ void loopTransmitter()
 
   if (len < (avrgTelegramlen/2) ) { return; }
 
-  Serial.printf("\r\nread [%d]bytes\r\n", len);
+  Serial.printf("\r\nRead [%d]bytes\r\n", len);
 
   if (len >= (_MAX_P1BUFFER - 15))
   {
@@ -471,18 +471,20 @@ void loopTransmitter()
   //
   p1Buffer[len++] = '!';
 
-  int orgCRCpos = 0;
-  memset(orgCRC, 0, sizeof(orgCRC));
+  int orgCrcPos = 0;
+  memset(orgCrcChar, 0, sizeof(orgCrcChar));
 
   Serial1.setTimeout(500);
-  int orgCRCLen = Serial1.readBytesUntil('\r', orgCRC, sizeof(orgCRC));
-  for(int i=0; i<strlen(orgCRC); i++)
+  int orgCrcLen = Serial1.readBytesUntil('\r', orgCrcChar, sizeof(orgCrcChar));
+  Serial.printf("(a) p1Buffer [%d]bytes, orgCrcLen is [%d]\r\n", len, orgCrcLen);
+  for(int i=0; i<strlen(orgCrcChar); i++)
   {
-    if ((orgCRC[i] >= ' ') && (orgCRC[i] <= '~'))
+    if ((orgCrcChar[i] >= ' ') && (orgCrcChar[i] <= '~'))
     {
-      p1Buffer[len++] = orgCRC[i];
+      p1Buffer[len++] = orgCrcChar[i];
     }
   }
+  Serial.printf("(b) p1Buffer [%d]bytes\r\n", len);
 
   p1Buffer[len++] = '\r';
   p1Buffer[len++] = '\n';
