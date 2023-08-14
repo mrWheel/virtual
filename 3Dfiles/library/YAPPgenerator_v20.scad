@@ -3,7 +3,7 @@
 **  Yet Another Parameterised Projectbox generator
 **
 */
-Version="v2.0.4 (27-07-2023)";
+Version="v2.0.4 (09-08-2023)";
 /*
 **
 **  Copyright (c) 2021, 2022, 2023 Willem Aandewiel
@@ -1597,8 +1597,8 @@ module makeLightTubes()
     //-debug-echo("makeLightTubes()", xPos=xPos, yPos=yPos, tLength=tLength, tWidth=tWidth, tWall=tWall, tAbvPcb=tAbvPcb);
     if (isTrue(yappCircle, tube))
     {
-      //-tst-tmpArray = [[xPos, yPos, tLength, tWidth, tWidth, yappCircle, yappCenter]];
-      tmpArray = [[xPos, yPos, tWidth, tWidth, yappCircle, yappCenter]];
+      tWidthSmall = ((tWidth/2) < 3) ? 3 : (tWidth/2);    //-- 09-08-2023
+      tmpArray = [[xPos, yPos, tWidthSmall, tWidth, yappCircle, yappCenter]];
       //-debug-echo("makeLightTubes(Circle)", tmpArray=tmpArray);
       cutoutsInXY("lid", tmpArray);
     }

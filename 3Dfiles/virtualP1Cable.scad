@@ -16,7 +16,7 @@
 //-----------------------------------------------------------------------
 
 //-- Transmitter(true) or Receiver (false)
-printTransmitter    = true;
+printTransmitter    = false;
 
 //-- cutout Monitor and UPDI headers for development
 isDevelopment       = false;
