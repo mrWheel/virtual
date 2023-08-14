@@ -202,7 +202,7 @@ void transmitTelegram(char *telegram, int telegramLen)
   startTelegramPos = 0;
 
   sequenceNr = telegramLen / sizeof(payLoad.data);
-  Serial.printf("\r\nTransmit Telegram ..(%d bytes) in [%d+1] parts\r\n", telegramLen, sequenceNr);
+  Serial.printf("\r\nTransmit Telegram ..(%d bytes) in [%d+1] packages\r\n", telegramLen, sequenceNr);
   sequenceNr = 0;
   digitalWrite(PIN_LED, HIGH);
 
@@ -566,7 +566,7 @@ void loopTransmitter()
   Serial.printf("p1Telegram is [%d]bytes long\r\n", p1BuffLen);
   Serial.flush();
 
-  //-- transmit Telegram in parts .. 
+  //-- transmit Telegram in packages .. 
   transmitTelegram(&p1Buffer[startTelegramPos], p1BuffLen);
 
   digitalWrite(PIN_LED, LOW);
